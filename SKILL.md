@@ -2,7 +2,7 @@
 name: skill-creator-king
 description: Use only when SCK, Skill Creator King, or skill-creator-king is explicitly selected to create a Codex or Claude Code Skill, check a Skill, or review and improve one after use. Excludes generic requests and discussion.
 metadata:
-  version: "5.6.6"
+  version: "5.6.7"
   author: "普通AI星球（公众号 & SkillHub）· Ordinary-AI（GitHub）"
   description_zh: "明确选择 SCK 后创建 Codex 或 Claude Code Skill、检查 Skill，或按使用证据复盘改进。"
 

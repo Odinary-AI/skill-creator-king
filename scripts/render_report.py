@@ -14,7 +14,9 @@ SCHEMA = "skill-creator-king.report.v1"
 BASE_IDS = ["SCK-S%02d" % n for n in range(1, 11)] + ["SCK-L%02d" % n for n in range(1, 14)]
 CODEX_IDS = ["SCK-C%02d" % n for n in range(1, 5)]
 STATUSES = ("pass", "gap", "advisory", "not_applicable", "not_assessed")
+# JSON keeps the full boundary claim; user-facing lines use the short template form.
 CLAIM = "运行行为：未评估，超出 SCK 范围。静态检查不证明安全、宿主验收、发布就绪或人工批准。"
+CLAIM_LINE = "运行行为：未评估，超出 SCK 范围"
 LABELS = {"pass": "通过", "gap": "必修", "advisory": "建议", "not_applicable": "不适用", "not_assessed": "未评估"}
 
 
@@ -112,9 +114,10 @@ def normalize(source):
 def render_markdown(report, verbosity="full"):
     report = normalize(report)
     checks = report["checks"]
-    counts = " · ".join("%s %s" % (n, LABELS[s]) for s, n in report["coverage"].items())
+    counts = " · ".join("%s %s" % (n, LABELS[s])
+                        for s, n in report["coverage"].items() if n)
     lines = ["**静态合规报告**", "", "结论：**%s**——%s 项全分类（%s）" % (report["verdict"], len(checks), counts),
-             "", "检查对象：" + report["target"], "平台配置：" + report["profile"],
+             "", "检查对象：" + report["target"],
              "读取范围：" + report["read_scope"], ""]
     for disposition, label in (("gap", "必修项（不修=静态不合规）"), ("advisory", "建议项（不影响合格判定）")):
         items = [(c, f) for c in checks for f in c["findings"] if f["disposition"] == disposition]
@@ -122,9 +125,13 @@ def render_markdown(report, verbosity="full"):
         for check, finding in items:
             location = finding["file"] + (" 第 %s 行" % finding["line"] if finding["line"] else "")
             kind = "脚本事实" if finding["check_type"] == "deterministic" else "语义推断"
-            lines.append("- %s（%s；%s；%s）：%s。影响：%s。怎么改：%s。证据：%s。" %
-                         (check["title"], check["id"], kind, finding["severity"], location,
-                          finding["impact"], finding["recommendation"], finding["evidence"]))
+            # 用户语言三段：位置＋证据＋影响一句话，然后最小修改动作；严重度留给 JSON。
+            statement = "%s：%s，%s。" % (location, finding["evidence"].rstrip("。"),
+                                         finding["impact"].rstrip("。"))
+            title = ("**%s**" if disposition == "gap" else "%s") % check["title"]
+            lines.append("- %s（%s；%s）：%s怎么改：%s。" %
+                         (title, check["id"], kind, statement,
+                          finding["recommendation"].rstrip("。")))
         lines.append("")
     for status, heading in (("not_applicable", "不适用"), ("not_assessed", "未评估")):
         items = [c for c in checks if c["status"] == status]
@@ -132,8 +139,9 @@ def render_markdown(report, verbosity="full"):
         for c in items:
             lines.append("- %s（%s）：%s" % (c["title"], c["id"], c["reason"]))
             for item in c["unassessed"]:
-                lines.append("  %s；所需证据：%s；影响判定：%s" %
-                             (item["reason"], item["needed_evidence"], "是" if item["material"] else "否"))
+                lines.append("  %s；所需证据：%s；%s" %
+                             (item["reason"], item["needed_evidence"],
+                              "会影响整体结论" if item["material"] else "不影响整体结论"))
         lines.append("")
     passed = [c for c in checks if c["status"] == "pass"]
     lines.append("通过 %s 项：%s" % (len(passed), " · ".join("%s（%s）" % (c["title"], c["id"]) for c in passed)))
@@ -144,12 +152,16 @@ def render_markdown(report, verbosity="full"):
             original = item["original"]
             lines.append("- %s，%s：%s；原始观察：%s" %
                          (c["id"], original["path"], item["disposition"], original["evidence"]))
-    if verbosity == "full":
-        lines.extend(["", "通过项依据："] + ["- %s：%s" % (c["id"], c["reason"]) for c in passed])
+    if verbosity == "full" and passed:
+        groups = {}
+        for c in passed:
+            groups.setdefault(c["reason"].rstrip("。"), []).append("%s（%s）" % (c["title"], c["id"]))
+        lines.extend(["", "通过项依据："] +
+                     ["- %s：%s" % (reason, " · ".join(names)) for reason, names in groups.items()])
     lines.extend(["", "限制："] + (["- " + x for x in report["limitations"]] or ["无"]))
     if report["changes"]:
         lines.extend(["", "变更证据："] + ["- " + x for x in report["changes"]])
-    lines.extend(["", report["claim_boundary"], "下一步行动：" + report["next_action"]])
+    lines.extend(["", CLAIM_LINE, "下一步行动：" + report["next_action"]])
     return "\n".join(lines) + "\n"
 
 
