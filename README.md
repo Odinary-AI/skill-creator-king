@@ -4,7 +4,7 @@ SCK 是显式选择型 Skill，可在 Codex 与 Claude Code 中使用，有三�
 Skill 的书面缺口、根据实际使用过程复盘改进已有 Skill。它帮助把需求和真实经验
 变成有边界的可复用指令，用同一份问题清单支持静态检查。
 
-当前版本为 **5.6.5**。检查能力吸收原 Agent Skill Checker，
+当前版本为 **5.6.6**。检查能力吸收原 Agent Skill Checker，
 新增 Codex 专项与统一 JSON 报告，保留创建、复盘及敏感信息预扫描。
 
 ## 快速开始
@@ -17,20 +17,33 @@ SCK 复用当前对话，先说明问题归因与具体改法，再执行已授�
 
 ## 平台与命令
 
-按需克隆到对应宿主的个人 Skill 目录（目标目录须不存在）：
+### 安装
+
+按需克隆到对应宿主的个人 Skill 目录（目标目录须不存在，运行其中一条即可）：
 
 ```bash
 git clone https://github.com/Odinary-AI/skill-creator-king.git ~/.codex/skills/skill-creator-king
 git clone https://github.com/Odinary-AI/skill-creator-king.git ~/.claude/skills/skill-creator-king
 ```
 
-也可以只运行其中一条。安装后在 Codex 中点名
-`$skill-creator-king`，在 Claude Code 中使用 `/skill-creator-king`。
-两端都应由用户显式调用 SCK；Codex 元数据关闭自动调用，Claude Code 的描述限定显式选择。
-检查目标支持 `auto|generic|workbuddy|codex`，与运行宿主独立；只检查请求不进入修改。
-`auto` 仅在目标自带 `agents/openai.yaml` 时选 Codex，否则选 generic；可显式指定。
-创建支持 Codex 与 Claude Code 目标。未指明目标时采用当前宿主；Codex
-使用 27 项检查，Claude Code 使用 23 项通用检查，未提供 Claude 专项验收。
+### 调用
+
+安装后的预期调用方式：在 Codex 中点名 `$skill-creator-king`，在 Claude Code 中
+使用 `/skill-creator-king`（设计用法，两端实际调用尚未逐一验证）。SCK 只应被
+用户显式调用：Codex 元数据关闭自动调用，Claude Code 的描述限定显式选择。
+
+### 检查目标与项数
+
+检查目标支持 `auto|generic|workbuddy|codex`，与运行宿主独立；只检查请求不进入
+修改。`auto` 仅在目标自带 `agents/openai.yaml` 时选 Codex，否则选 generic；可
+显式指定。创建支持 Codex 与 Claude Code 目标，未指明时采用当前宿主。
+
+| 目标 | 检查项 |
+|---|---|
+| Codex | 23 项通用 + 4 项 Codex 专项 |
+| Claude Code | 23 项通用（未提供 Claude 专项验收） |
+
+### 命令行静态检查
 
 ```bash
 python3 "<SCK安装目录>/scripts/check_skill.py" "<目标Skill目录>" --profile auto
@@ -125,29 +138,22 @@ python3 "<SCK安装目录>/scripts/check_skill.py" "<目标Skill目录>" --profi
 
 ## 检查范围
 
-共同问题清单包含两类条目：
+查什么——一份共同问题清单，两类条目：
 
-- `SCK-Sxx`：脚本可重复证明的目录、UTF-8、frontmatter、名称、无歧义简单 Markdown
-  引用、路径边界、符号链接、孤立资源和 canonical 模板结构事实。
-- `SCK-Lxx`：需要 LLM 理解文字的目标、触发范围、输入、流程、输出、权限、副作用、
-  失败行为、条件契约、资源必要性、跨文档一致性、声明与实现一致、README 自足
-  和指令去重。
+- `SCK-Sxx`：脚本可重复证明的结构事实：目录、UTF-8、frontmatter、名称、
+  Markdown 引用、路径边界、符号链接、孤立资源等。
+- `SCK-Lxx`：需要 LLM 理解文字的书面契约：目标与触发、输入、流程、输出、权限、
+  副作用、失败行为、跨文档一致性、README 自足、指令去重等。
 
-脚本不尝试穷举完整 Markdown。LLM 必须独立核对所有实际本地引用，即使脚本没有提醒、
-目录里没有资源。确认缺失的必需资源属于必修项，不随链接写法降级。脚本提取的候选
-若经上下文证明只是示例，可记录证据后判为不适用；不能把真实缺失或越界改判成有效。
+谁来查——脚本与 LLM 分工。脚本只产出确定性结构事实；LLM 独立核对所有实际本地
+引用和语义适用，即使脚本没有提醒、目录里没有资源。确认缺失的必需资源属于必修项，
+不随链接写法降级；脚本提取的候选经上下文证明只是示例时，可记录证据后判为不适用，
+但真实缺失或越界不能改判为有效。条目细则与边界情况见
+[共同问题清单](references/common-issues.md)。
 
-canonical 格式只由代码围栏外独立一行的 marker 启用；示例标题和示例字段不充当
-真实契约。普通代码围栏可延续至文件末尾，不因缺少闭合符自动报错。S09 提供带行号
-的标题和字段观察，不要求精确英文标题；双语描述、作者和版本按任务需要提供。
-S05 占位符候选按 [共同清单](references/common-issues.md) 复核。脚本事实不能替代
-L01–L08 对必要契约的语义判断。
-
-YAML 显式重复键会得到诊断，标准 description 检查解码后的 1,024 字符上限。复杂
-容器围栏的未提取部分保留原因并交给上下文复核；已知事实与未完成判断分别保留。
-
-SCK 不运行、导入或调试目标 Skill，不测试其依赖、网络服务、性能或实际功能，也不
-提供安全认证、质量分数或 marketplace 就绪结论。创建和完整检查报告必须说明：
+不做什么——SCK 不运行、导入或调试目标 Skill，不测试其依赖、网络服务、性能或
+实际功能，也不提供安全认证、质量分数或 marketplace 就绪结论。创建和完整检查
+报告必须说明：
 
 `运行行为：未评估，超出 SCK 范围。`
 
