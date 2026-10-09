@@ -45,9 +45,11 @@ def main(argv=None):
         return 2
     # With no ready environment preserve the validator's independent filesystem
     # results and explicit YAML not_assessed items; never guess parsed values.
+    # The validator inherits this caller's working directory so relative target
+    # paths resolve where the user invoked the entry, not beside the script.
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
     return subprocess.run([runtime or sys.executable, "-I", str(validator), *args],
-                          env=env, cwd=str(validator.parent)).returncode
+                          env=env).returncode
 
 
 if __name__ == "__main__":

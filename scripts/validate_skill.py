@@ -29,6 +29,10 @@ MESSAGES = {
     "frontmatter.name.missing": "Frontmatter name must be a nonempty string.",
     "frontmatter.description.too_long": "Frontmatter description must not exceed 1024 characters.",
     "frontmatter.description.missing": "Frontmatter description must be a nonempty string.",
+    "frontmatter.description.use_when_inline": (
+        "A 'Use when' trigger segment must start the description or occupy its own line; "
+        "in folded YAML blocks keep an empty line before it."
+    ),
     "frontmatter.compatibility.invalid": "Optional compatibility must be a string of at most 500 characters.",
     "codex.metadata.invalid": "Supported Codex metadata has an invalid shape or value.",
     "frontmatter.name.invalid": "Skill name must use lowercase letters, digits, and single hyphens.",
@@ -43,6 +47,7 @@ MESSAGES = {
     "reference.missing": "A routed local resource is not a regular file.",
     "path.symlink": "The selected Skill cannot contain symbolic links.",
     "resource.orphan": "A bundled resource has no route from SKILL.md.",
+    "resource.route.missing": "A declared route names a bundled path that resolves nowhere.",
     "content.credential.candidate": "A credential-shaped value may be present; the owner must resolve it before trusting this copy.",
     "content.pii.candidate": "A personal-data-shaped value may be present; the owner must resolve it before sharing this copy.",
 }
@@ -185,30 +190,6 @@ def _credential_scan(root):
                         if found:
                             break
     return hits, sorted(hit_files), dict(sorted(coverage.items()))
-
-
-def _metadata_strings(metadata, placeholder):
-    """Visit safe YAML strings, including extensions, without alias recursion."""
-    pending = [('frontmatter', metadata)]
-    visited = set()
-    while pending:
-        path, value = pending.pop()
-        if isinstance(value, str):
-            yield path, value
-        elif isinstance(value, (dict, list, tuple, set)):
-            if id(value) in visited:
-                continue
-            visited.add(id(value))
-            if isinstance(value, dict):
-                for index, (key, child) in reversed(list(enumerate(value.items()))):
-                    # Never reproduce a placeholder-like key as evidence text.
-                    label = key if isinstance(key, str) and not placeholder.search(key) else '<key %s>' % index
-                    pending.append((path + '.' + label, child))
-                    pending.append((path + '.<key %s>' % index, key))
-            else:
-                values = sorted(value, key=repr) if isinstance(value, set) else value
-                pending.extend((path + '[%s]' % index, child)
-                               for index, child in reversed(list(enumerate(values))))
 
 
 class FrontmatterError(ValueError):
@@ -545,23 +526,50 @@ def _table_cell_path_candidates(text):
                 yield token
 
 
+def _is_shaped_spaced_path(path_part):
+    """True when a whitespace-bearing token still looks like a bundled path.
+
+    Narrow escape for the space guard: the token must carry a '/' path
+    prefix, end with a known routed-file suffix, and contain no wildcard
+    or placeholder brackets. ``references/notes/Paul Graham.md`` qualifies;
+    prose like ``see the docs/ folder`` does not.
+    """
+    if "/" not in path_part:
+        return False
+    lowered = path_part.lower()
+    if any(ch in lowered for ch in "[]{}<>〈〉"):
+        return False
+    return lowered.endswith(ROUTED_FILE_SUFFIXES)
+
+
 def _resolve_inline_code_route(root, source, content):
     """Resolve a declared path to a bundled regular file, or None.
 
     Inline-code and table-cell declarations only add S08 routes. Misses,
     escapes, absolute paths, and ambiguous forms produce no finding and are
-    left to L09 semantic review; a declared route never enqueues further
-    traversal.
+    left to L09 semantic review; routed Markdown files enqueue further
+    traversal under the same S10 rules as Markdown links, while non-
+    Markdown declared routes (scripts, data files) never enqueue.
+
+    Whitespace no longer disqualifies a token by itself: when the token is
+    a shaped path (see _is_shaped_spaced_path) the spaces are treated as
+    part of the filename, and resolution still requires a real bundled
+    regular file, so prose cannot mint routes. The miss direction
+    (_declared_route_miss) keeps its unconditional space guard.
     """
     if (
-        any(character.isspace() for character in content)
-        or content.startswith(("#", "<", "//"))
+        content.startswith(("#", "<", "//"))
         or content.lower().startswith("file:")
         or EXTERNAL_PATTERN.match(content)
     ):
         return None
     path_part = content.split("#", 1)[0].split("?", 1)[0]
     if not path_part:
+        return None
+    if (
+        any(character.isspace() for character in path_part)
+        and not _is_shaped_spaced_path(path_part)
+    ):
         return None
     target = Path(unquote(path_part))
     if target.is_absolute():
@@ -587,12 +595,13 @@ def _resolve_inline_code_route(root, source, content):
     return None
 
 
-def _collect_references(root, skill_file, skill_text, errors, not_assessed, semantic_read_files):
+def _collect_references(root, skill_file, skill_text, errors, not_assessed, semantic_read_files, warnings):
     """Follow only explicit local Markdown links, starting at SKILL.md."""
     queue = [(skill_file, skill_text)]
     visited = set()
     reachable = set()
     declared_routes = set()
+    route_misses = set()
 
     while queue:
         source, supplied_text = queue.pop(0)
@@ -736,11 +745,92 @@ def _collect_references(root, skill_file, skill_text, errors, not_assessed, sema
             routed = _resolve_inline_code_route(root, source, content)
             if routed is not None:
                 declared_routes.add(routed)
+                _maybe_enqueue_routed_markdown(
+                    root, routed, semantic_read_files, queue, not_assessed)
+            else:
+                miss = _declared_route_miss(root, source, content)
+                if miss is not None:
+                    route_misses.add(miss)
         for token in _table_cell_path_candidates(text):
             routed = _resolve_inline_code_route(root, source, token)
             if routed is not None:
                 declared_routes.add(routed)
+                _maybe_enqueue_routed_markdown(
+                    root, routed, semantic_read_files, queue, not_assessed)
+            else:
+                miss = _declared_route_miss(root, source, token)
+                if miss is not None:
+                    route_misses.add(miss)
+    for miss in sorted(route_misses):
+        warnings.append(_issue("SCK-S08", "resource.route.missing", miss))
     return sorted(reachable), sorted(declared_routes)
+
+
+ROUTED_FILE_SUFFIXES = (".md", ".py", ".js", ".ts", ".json", ".yml", ".yaml",
+                        ".csv", ".txt", ".png", ".jpg", ".jpeg", ".svg",
+                        ".pdf", ".html", ".sh", ".toml")
+
+
+def _declared_route_miss(root, source, content):
+    """Return an S08 miss report for a path-shaped route that resolves nowhere.
+
+    Narrow contract, guarding the L09 semantic space: only a token that
+    already looks like a deliberate bundled-path route -- carries a '/'
+    path prefix, bears a known file suffix, resolves to no bundled file
+    under the declaring file's directory or the Skill root, and is not
+    an external URL, wildcard template, or placeholder -- counts as a
+    miss. Bare filenames and bracket templates stay silent for L09.
+    """
+    if (
+        any(character.isspace() for character in content)
+        or content.startswith(("#", "<", "//"))
+        or content.lower().startswith("file:")
+        or EXTERNAL_PATTERN.match(content)
+    ):
+        return None
+    path_part = content.split("#", 1)[0].split("?", 1)[0]
+    if not path_part or "/" not in path_part:
+        return None
+    target = Path(unquote(path_part))
+    if target.is_absolute():
+        return None
+    lowered = target.name.lower()
+    if any(ch in lowered for ch in "[]{}<>〈〉"):
+        return None
+    if not lowered.endswith(ROUTED_FILE_SUFFIXES):
+        return None
+    for base in (source.parent, root):
+        candidate = base / target
+        try:
+            if (
+                _inside(candidate.resolve(), root)
+                and candidate.resolve().is_file()
+                and not candidate.is_symlink()
+            ):
+                return None
+        except (OSError, ValueError, RuntimeError):
+            continue
+    return "%s (declared in %s)" % (
+        path_part, _relative(source, root))
+
+
+def _maybe_enqueue_routed_markdown(root, routed, semantic_read_files, queue, not_assessed):
+    """Queue a declared-route Markdown file for content inspection.
+
+    Traversal mirrors the Markdown-link rule: a routed .md file enters the
+    BFS queue only when its content is not withheld by S10, so secondary
+    routes declared inside routed files are no longer invisible to S08.
+    Non-Markdown routes (scripts, data files) still never enqueue.
+    """
+    if not routed.endswith(".md"):
+        return
+    if routed in semantic_read_files:
+        queue.append((root / routed, None))
+    else:
+        for check_id in ('SCK-S06', 'SCK-S08'):
+            not_assessed.append(_issue(
+                check_id, 'check.not_assessed',
+                'Content withheld by S10; nested routes were not inspected.', routed))
 
 
 def _metadata_strings(metadata, placeholder):
@@ -1040,6 +1130,13 @@ def validate_skill(skill_dir, operation="check", profile="auto"):
     if isinstance(description_value, str) and len(description_value) > 1024:
         errors.append(_issue('SCK-S02', 'frontmatter.description.too_long',
                              'description: %s characters; maximum 1024' % len(description_value)))
+    for line in description.splitlines():
+        index = line.find("Use when")
+        if index > 0:
+            warnings.append(_issue(
+                "SCK-S02", "frontmatter.description.use_when_inline",
+                "Use when embedded mid-line: %s" % line.strip()[:80]))
+            break
     if name.strip() and root.name != name:
         mismatch = _issue(
             "SCK-S04",
@@ -1051,7 +1148,7 @@ def validate_skill(skill_dir, operation="check", profile="auto"):
 
     reachable, declared_routes = _collect_references(
         root, skill_file, text, errors, not_assessed,
-        set(facts["semantic_read_files"]))
+        set(facts["semantic_read_files"]), warnings)
     facts["reachable_resources"] = reachable
     facts["declared_routes"] = declared_routes
     for orphan in sorted(set(resources) - set(reachable) - set(declared_routes)):

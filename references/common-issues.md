@@ -22,10 +22,14 @@ dependency and an orphan warning does not prove a resource is unused.
 A second, narrower extractor serves S08 alone: inline code spans whose content
 is path-shaped, and table-row cells (lines containing `|`, split on `|`) whose
 token carries a path prefix, count as routes when they resolve to a bundled
-regular file (relative to the declaring file first, then the Skill root). They
-never produce missing-reference findings, never escape the Skill boundary, and
-never enqueue further traversal; fenced code stays excluded. A bare filename
-without a path prefix is ambiguous against same-named files and stays with L09,
+regular file (relative to the declaring file first, then the Skill root). A
+declared token that is path-shaped (path prefix plus a known file suffix, no
+wildcard or placeholder brackets) yet resolves to no bundled file is reported
+as `resource.route.missing` (5.6.3) -- the theory-base.md case proved the
+silent-miss zone could hide real broken routes. Bare filenames, bracket
+templates, escapes, and external URLs stay silent for L09; fenced code stays
+excluded. A bare filename without a path prefix is ambiguous against
+same-named files and stays with L09,
 as do arrow syntax, bare prose mentions, and command invocations inside fences
 — resources declared only through them still surface as S08 candidates for L09
 reconciliation.
@@ -47,7 +51,7 @@ reconciliation.
 - Owner: script
 - Pass: PyYAML's safe loader parses a mapping containing nonempty `name` and `description` strings; description is at most 1,024 decoded characters and explicit mapping keys are unique.
 - Evidence: field names and parser result.
-- Common gap: missing delimiter, malformed value, duplicate explicit key, absent name or description, or an overlong description.
+- Common gap: missing delimiter, malformed value, duplicate explicit key, absent name or description, an overlong description, or a `Use when` trigger segment folded mid-line instead of starting the description or owning its own line (warning: `frontmatter.description.use_when_inline`).
 - Minimum change: repair only the malformed or missing frontmatter fields.
 
 When present, `compatibility` must be a string of at most 500 characters. Other
@@ -60,6 +64,12 @@ Duplicate keys in one mapping are gaps even with equal values; inherited merge
 values and names in different mappings are not explicit duplicates. SafeLoader
 still defines supported YAML types. This field baseline does not certify full
 Agent Skills compatibility or host acceptance.
+
+The `Use when` line check is a warning, not an error: descriptions without any
+`Use when` segment stay silent; a segment found mid-line (index > 0 after YAML
+folding) suggests a folded block lost its blank separator, so the machine
+segment no longer owns a line. Fix by adding the blank line in the folded
+block, not by rewording the description.
 
 Missing PyYAML or a construct unsupported by its safe loader is `not_assessed`,
 not a malformed-Skill finding. Preserve dependent unassessed items too; continue
