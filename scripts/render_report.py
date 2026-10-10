@@ -102,7 +102,7 @@ def normalize(source):
         array(report.get(field), field)
         for i, value in enumerate(report[field]):
             string(value, "%s[%s]" % (field, i))
-    verdict = ("无法完成检查" if has_unknown else "静态不合规" if has_gap else
+    verdict = ("无法判定" if has_unknown else "静态不合规" if has_gap else
                "静态合规但有建议" if has_advisory else "静态合规")
     report["verdict"] = verdict
     report["coverage"] = {s: sum(c["status"] == s for c in checks) for s in STATUSES}
@@ -116,7 +116,10 @@ def render_markdown(report, verbosity="full"):
     checks = report["checks"]
     counts = " · ".join("%s %s" % (n, LABELS[s])
                         for s, n in report["coverage"].items() if n)
-    lines = ["**静态合规报告**", "", "结论：**%s**——%s 项全分类（%s）" % (report["verdict"], len(checks), counts),
+    # 「无法判定」必须紧跟原因——检查跑完了、证据不足，不是检查没跑成。
+    verdict_label = (report["verdict"] + "（必需项证据不足，见未评估）"
+                     if report["verdict"] == "无法判定" else report["verdict"])
+    lines = ["**静态合规报告**", "", "结论：**%s**——%s 项全分类（%s）" % (verdict_label, len(checks), counts),
              "", "检查对象：" + report["target"],
              "读取范围：" + report["read_scope"], ""]
     for disposition, label in (("gap", "必修项（不修=静态不合规）"), ("advisory", "建议项（不影响合格判定）")):

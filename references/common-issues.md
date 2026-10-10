@@ -69,7 +69,12 @@ The `Use when` line check is a warning, not an error: descriptions without any
 `Use when` segment stay silent; a segment found mid-line (index > 0 after YAML
 folding) suggests a folded block lost its blank separator, so the machine
 segment no longer owns a line. Fix by adding the blank line in the folded
-block, not by rewording the description.
+block, not by rewording the description. Note that one blank line folds to a
+single newline: it gives `Use when` its own line, which satisfies this check,
+but leaves no empty line between the human and machine segments. When a
+publishing tool or host contract requires splitting the parsed description on
+an empty line, use two blank lines in the folded block (they fold to a blank
+separator) instead.
 
 Missing PyYAML or a construct unsupported by its safe loader is `not_assessed`,
 not a malformed-Skill finding. Preserve dependent unassessed items too; continue

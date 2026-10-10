@@ -1,10 +1,21 @@
 ---
 name: skill-creator-king
-description: Use only when SCK, Skill Creator King, or skill-creator-king is explicitly selected to create a Codex or Claude Code Skill, check a Skill, or review and improve one after use. Excludes generic requests and discussion.
+description: >-
+  Creates, checks, and improves Agent Skills with a fixed workflow, default
+  templates, and a common-issue checklist, so any model ships statically
+  compliant Skills without guessing. Three flows: Create builds a new Codex
+  or Claude Code Skill from clarified requirements; Check finds written gaps
+  in an existing Skill with a read-only structural validator; Reflect reviews
+  real usage evidence and improves instructions within authorization.
+
+
+  Use when SCK, Skill Creator King, or skill-creator-king is explicitly
+  selected for one of these actions. Excludes generic requests, discussion,
+  comparison, and negation.
 metadata:
-  version: "5.6.7"
+  version: "5.6.9"
   author: "普通AI星球（公众号 & SkillHub）· Ordinary-AI（GitHub）"
-  description_zh: "明确选择 SCK 后创建 Codex 或 Claude Code Skill、检查 Skill，或按使用证据复盘改进。"
+  description_zh: "以固定流程、默认模板与常见问题清单，创建 Codex 或 Claude Code 的 Skill、检查既有 Skill 的书面契约缺口，或依据真实使用证据复盘改进。创建分轮澄清、逐项确认后才起草，草稿先过完整自检再交付；检查只读，证据不足如实标注未评估；复盘只做授权内的最小改进。明确选择 SCK、Skill Creator King 或 skill-creator-king 并执行上述动作之一时使用。排除泛化请求、讨论、比较与否定。"
 
 ---
 

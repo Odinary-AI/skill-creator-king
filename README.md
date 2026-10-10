@@ -4,7 +4,7 @@ SCK 是显式选择型 Skill，可在 Codex 与 Claude Code 中使用，有三�
 Skill 的书面缺口、根据实际使用过程复盘改进已有 Skill。它帮助把需求和真实经验
 变成有边界的可复用指令，用同一份问题清单支持静态检查。
 
-当前版本为 **5.6.7**。检查能力吸收原 Agent Skill Checker，
+当前版本为 **5.6.9**。检查能力吸收原 Agent Skill Checker，
 新增 Codex 专项与统一 JSON 报告，保留创建、复盘及敏感信息预扫描。
 
 ## 快速开始

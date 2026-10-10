@@ -66,7 +66,7 @@ regardless of target quality. Renderer success is not target success.
 ## Migration
 
 This replaces the checker report v2 for new calls; it is deliberately a new
-schema. Do not map `blocked` to `无法完成检查`: the former meant a proven blocker,
+schema. Do not map `blocked` to `无法判定`: the former meant a proven blocker,
 the latter means insufficient assessment. No legacy consumer was found in the
 bounded local migration inventory; no legacy adapter is shipped. Migrate actual
 consumers explicitly if later found. The old static-inspection JSON is also not
