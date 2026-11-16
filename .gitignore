@@ -1,4 +1,9 @@
 __pycache__/
-*.pyc
+*.py[cod]
 .pytest_cache/
+.worktrees/
+.sck-backups/
+.sck-failed-*
 .DS_Store
+.skillignore
+docs/superpowers/

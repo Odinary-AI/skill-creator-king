@@ -3,21 +3,35 @@
 
 This is a report consumer, not an automatic semantic reviewer. Invalid input
 returns an operational error, never a quality verdict.
+
+With --facts, original observations are reconciled against the complete validator
+result, and semantic citations against readable/reported files. The renderer
+still never reads the target itself or judges disposition semantics.
 """
 import argparse
 import copy
 import json
+from collections import Counter
 from pathlib import Path
 
 
-SCHEMA = "skill-creator-king.report.v1"
-BASE_IDS = ["SCK-S%02d" % n for n in range(1, 11)] + ["SCK-L%02d" % n for n in range(1, 14)]
-CODEX_IDS = ["SCK-C%02d" % n for n in range(1, 5)]
+SCHEMA = "skill-creator-king.report.v2"
+BASE_IDS = ["SCK-S%02d" % n for n in range(1, 11)] + ["SCK-L%02d" % n for n in range(1, 15)]
+CODEX_IDS = ["SCK-C%02d" % n for n in range(1, 3)]
 STATUSES = ("pass", "gap", "advisory", "not_applicable", "not_assessed")
 # JSON keeps the full boundary claim; user-facing lines use the short template form.
-CLAIM = "运行行为：未评估，超出 SCK 范围。静态检查不证明安全、宿主验收、发布就绪或人工批准。"
-CLAIM_LINE = "运行行为：未评估，超出 SCK 范围"
+CLAIM = "实际运行：未评估（SCK 只做静态检查）。静态检查不证明运行行为、安全、宿主验收、发布就绪或人工批准。"
+CLAIM_LINE = "实际运行：未评估（SCK 只做静态检查）"
 LABELS = {"pass": "通过", "gap": "必修", "advisory": "建议", "not_applicable": "不适用", "not_assessed": "未评估"}
+# 结论句由判词映射生成，不让模型自由书写，避免说法与判词打架。
+VERDICT_SENTENCE = {
+    "静态合规": "没有必须改的书面缺口",
+    "静态合规但有建议": "没有必须改的书面缺口，另有可缓改项",
+    "静态不合规": "有必须改的书面缺口",
+    "无法判定": "有一项必需检查没判成，先别下结论",
+}
+OPERATION_LABEL = {"create": "创建后自检", "check": "只读检查"}
+SEPARATOR = "—— 以下为审计明细，供维护者追溯 ——"
 
 
 def require(condition, path, expected):
@@ -42,6 +56,17 @@ def normalize(source):
     require(report.get("profile") in ("generic", "workbuddy", "codex"), "profile", "resolved profile")
     require(report.get("operation") in ("create", "check"), "operation", "create or check")
     require(report.get("completed") is True, "completed", "true; otherwise return an operational error")
+    reads = report.get("files_read")
+    if reads is not None:
+        array(reads, "files_read")
+        for index, value in enumerate(reads):
+            string(value, "files_read[%s]" % index)
+            require(
+                not Path(value).is_absolute() and "\\" not in value and ".." not in Path(value).parts,
+                "files_read[%s]" % index,
+                "target-relative POSIX path",
+            )
+        require(len(reads) == len(set(reads)), "files_read", "unique paths")
     checks = report.get("checks")
     array(checks, "checks")
     expected_ids = BASE_IDS + (CODEX_IDS if report["profile"] == "codex" else [])
@@ -98,6 +123,21 @@ def normalize(source):
         has_advisory |= "advisory" in dispositions
         has_unknown |= check["required"] and any(x["material"] for x in check["unassessed"])
     require(len(ids) == len(set(ids)) and set(ids) == set(expected_ids), "checks", "every selected-profile ID exactly once")
+    decisions = report.get("decisions")
+    if decisions is None:
+        decisions = []
+    array(decisions, "decisions")
+    require(len(decisions) <= 3, "decisions", "at most 3 items")
+    # 已经判为通过的项没有可决定的内容；有待定假设的项不应同时列在通过块里。
+    status_by_id = {c["id"]: c["status"] for c in checks}
+    for i, item in enumerate(decisions):
+        loc = "decisions[%s]" % i
+        require(isinstance(item, dict), loc, "object")
+        for field in ("id", "question", "if_a", "if_b", "default"):
+            string(item.get(field), loc + "." + field)
+        require(item["id"] in expected_ids, loc + ".id", "a selected check ID")
+        require(status_by_id[item["id"]] != "pass", loc + ".id", "a check that is not classified pass")
+    report["decisions"] = decisions
     for field in ("limitations", "changes"):
         array(report.get(field), field)
         for i, value in enumerate(report[field]):
@@ -111,17 +151,77 @@ def normalize(source):
     return report
 
 
+def _same_target(left, right):
+    """Compare two target paths without reading either one."""
+    try:
+        return Path(str(left)).expanduser().resolve() == Path(str(right)).expanduser().resolve()
+    except (OSError, RuntimeError, ValueError):
+        return False
+
+
+def validate_evidence(report, facts):
+    """Reconcile observations and semantic citations; never read the target."""
+    require(isinstance(facts, dict), "facts", "object")
+    originals = []
+    for category in ("errors", "warnings", "not_assessed"):
+        entries = facts.get(category)
+        array(entries, "facts." + category)
+        require(all(isinstance(item, dict) for item in entries), "facts." + category, "observation objects")
+        originals.extend(entries)
+    key = lambda item: json.dumps(item, sort_keys=True, ensure_ascii=False, allow_nan=False)
+    supplied = [item["original"] for check in report["checks"] for item in check["observations"]]
+    require(Counter(map(key, originals)) == Counter(map(key, supplied)), "observations",
+            "every validator error, warning and not_assessed observation unchanged, with matching multiplicity")
+    payload = facts.get("facts")
+    require(isinstance(payload, dict), "facts", "validator facts object")
+    require(_same_target(report.get("target"), payload.get("root")),
+            "facts.root", "same target as the report")
+    require(payload.get("operation") == report.get("operation"),
+            "facts.operation", "same operation as the report")
+    require(payload.get("profile") == report.get("profile"),
+            "facts.profile", "same profile as the report")
+    eligible = payload.get("semantic_read_files")
+    require(
+        isinstance(eligible, list) and all(isinstance(item, str) for item in eligible),
+        "facts.semantic_read_files",
+        "string array",
+    )
+    reads = report.get("files_read")
+    require(isinstance(reads, list), "files_read", "required when --facts is supplied")
+    allowed = set(eligible)
+    for value in reads:
+        require(value in allowed, "files_read", "subset of facts.semantic_read_files")
+    cited = set(reads)
+    for check_index, check in enumerate(report["checks"]):
+        for item_index, item in enumerate(check["findings"]):
+            if item["check_type"] == "semantic":
+                require(
+                    item["file"] in cited,
+                    "checks[%s].findings[%s].file" % (check_index, item_index),
+                    "a cited file in files_read",
+                )
+
+
 def render_markdown(report, verbosity="full"):
     report = normalize(report)
     checks = report["checks"]
     counts = " · ".join("%s %s" % (n, LABELS[s])
                         for s, n in report["coverage"].items() if n)
-    # 「无法判定」必须紧跟原因——检查跑完了、证据不足，不是检查没跑成。
-    verdict_label = (report["verdict"] + "（必需项证据不足，见未评估）"
-                     if report["verdict"] == "无法判定" else report["verdict"])
-    lines = ["**静态合规报告**", "", "结论：**%s**——%s 项全分类（%s）" % (verdict_label, len(checks), counts),
-             "", "检查对象：" + report["target"],
-             "读取范围：" + report["read_scope"], ""]
+    # 前两行回答「查了谁、要不要动」；判词句由固定映射生成，避免说法与判词打架。
+    # 项数只报数字：C01–C02 是目标带 agents/openai.yaml 时随 profile 启用的补充项，
+    # 它们检查该文件与调用策略，不代表读者的运行宿主。
+    scope = "%s 项" % len(checks)
+    lines = [
+        "静态合规报告",
+        "",
+        "检查对象：%s（%s · %s）" % (
+            report["target"], OPERATION_LABEL[report["operation"]], scope),
+        "结论：%s——%s（%s 项：%s）" % (
+            VERDICT_SENTENCE[report["verdict"]], report["verdict"], len(checks), counts),
+        "",
+    ]
+    # 纯检查且无变更证据时，修改动作只是「若要改」的选项，不是已执行的动作。
+    unchanged = report["operation"] == "check" and not report["changes"]
     for disposition, label in (("gap", "必修项（不修=静态不合规）"), ("advisory", "建议项（不影响合格判定）")):
         items = [(c, f) for c in checks for f in c["findings"] if f["disposition"] == disposition]
         lines.append(label + ("：" if items else "：无"))
@@ -131,10 +231,11 @@ def render_markdown(report, verbosity="full"):
             # 用户语言三段：位置＋证据＋影响一句话，然后最小修改动作；严重度留给 JSON。
             statement = "%s：%s，%s。" % (location, finding["evidence"].rstrip("。"),
                                          finding["impact"].rstrip("。"))
-            title = ("**%s**" if disposition == "gap" else "%s") % check["title"]
-            lines.append("- %s（%s；%s）：%s怎么改：%s。" %
+            title = check["title"]
+            tail = "；本次未改动。" if unchanged else "。"
+            lines.append("- %s（%s；%s）：%s怎么改：%s%s" %
                          (title, check["id"], kind, statement,
-                          finding["recommendation"].rstrip("。")))
+                          finding["recommendation"].rstrip("。"), tail))
         lines.append("")
     for status, heading in (("not_applicable", "不适用"), ("not_assessed", "未评估")):
         items = [c for c in checks if c["status"] == status]
@@ -146,25 +247,57 @@ def render_markdown(report, verbosity="full"):
                              (item["reason"], item["needed_evidence"],
                               "会影响整体结论" if item["material"] else "不影响整体结论"))
         lines.append("")
+    limitations = list(report["limitations"])
+    if report["profile"] == "codex":
+        limitations.append("%s 项含 C01–C02 两项补充检查，由目标内的 agents/openai.yaml 触发，与本机运行宿主无关。" % len(checks))
+    lines.append("限制：" if limitations else "限制：无")
+    lines.extend("- " + x for x in limitations)
+    lines.extend(["", CLAIM_LINE,
+                  "待你决定：" if report["decisions"] else "待你决定：无"])
+    titles = {c["id"]: c["title"] for c in checks}
+    for item in report["decisions"]:
+        lines.append("- %s（%s）：%s；%s；%s；%s。" % (
+            titles[item["id"]], item["id"], item["question"].rstrip("。"),
+            item["if_a"].rstrip("。"), item["if_b"].rstrip("。"), item["default"].rstrip("。")))
+    lines.extend(["接下来怎么做：" + report["next_action"], "", SEPARATOR, ""])
+    lines.append("读取范围：" + report["read_scope"])
     passed = [c for c in checks if c["status"] == "pass"]
     lines.append("通过 %s 项：%s" % (len(passed), " · ".join("%s（%s）" % (c["title"], c["id"]) for c in passed)))
-    observations = [(c, o) for c in checks for o in c["observations"]]
-    if observations:
-        lines.extend(["", "脚本观察处置："])
-        for c, item in observations:
-            original = item["original"]
-            lines.append("- %s，%s：%s；原始观察：%s" %
-                         (c["id"], original["path"], item["disposition"], original["evidence"]))
     if verbosity == "full" and passed:
         groups = {}
         for c in passed:
             groups.setdefault(c["reason"].rstrip("。"), []).append("%s（%s）" % (c["title"], c["id"]))
         lines.extend(["", "通过项依据："] +
                      ["- %s：%s" % (reason, " · ".join(names)) for reason, names in groups.items()])
-    lines.extend(["", "限制："] + (["- " + x for x in report["limitations"]] or ["无"]))
+    observations = [(c, o) for c in checks for o in c["observations"]]
+    if observations:
+        lines.extend(["", "脚本观察处置："])
+        grouped = {}
+        for check, item in observations:
+            grouped.setdefault(check["id"], []).append(item)
+        for cid, items in grouped.items():
+            if len(items) == 1:
+                original = items[0]["original"]
+                # 根目录属性没有可读路径，不输出「.」占位。
+                where = "" if original["path"] in ("", ".") else "，%s" % original["path"]
+                lines.append("- %s%s：%s；原始观察：%s" %
+                             (cid, where, items[0]["disposition"], original["evidence"]))
+                continue
+            dispositions = []
+            for item in items:
+                if item["disposition"] not in dispositions:
+                    dispositions.append(item["disposition"])
+            paths = []
+            for item in items:
+                if item["original"]["path"] not in paths:
+                    paths.append(item["original"]["path"])
+            # 同类观察合并成一行；逐条明细留在 JSON，Markdown 从 34 行降到 1 行。
+            lines.append("- %s：%s 条观察合并披露，处置：%s；代表路径：%s；逐条见 JSON。" % (
+                cid, len(items),
+                "；".join(dispositions[:3]) + ("等 %s 类" % len(dispositions) if len(dispositions) > 3 else ""),
+                "、".join(paths[:3])))
     if report["changes"]:
         lines.extend(["", "变更证据："] + ["- " + x for x in report["changes"]])
-    lines.extend(["", CLAIM_LINE, "下一步行动：" + report["next_action"]])
     return "\n".join(lines) + "\n"
 
 
@@ -173,9 +306,12 @@ def main(argv=None):
     parser.add_argument("report")
     parser.add_argument("--format", choices=("markdown", "json"), default="markdown")
     parser.add_argument("--verbosity", choices=("concise", "full"), default="full")
+    parser.add_argument("--facts", help="complete validator JSON; reconcile observations and check citations")
     args = parser.parse_args(argv)
     try:
         report = normalize(json.loads(Path(args.report).read_text(encoding="utf-8")))
+        if args.facts:
+            validate_evidence(report, json.loads(Path(args.facts).read_text(encoding="utf-8")))
         print(json.dumps(report, ensure_ascii=False, indent=2) if args.format == "json"
               else render_markdown(report, args.verbosity), end="\n")
     except (ValueError, OSError, TypeError) as exc:

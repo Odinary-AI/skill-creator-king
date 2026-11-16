@@ -91,21 +91,11 @@ historical instructions:
   (including exact paths for deletion/rename), unless already authorized.
 - A refusal preserves the target. Do not overwrite unrelated or concurrent edits.
 
-Before writing, record the affected files' current content identity; make temporary
-rollback copies in a system temporary directory of only affected existing regular
-files, and track newly created paths. All edit paths, including rename destinations
-and parent directories, must stay inside the selected nonsymlink target; only the
-rollback copies live outside it. Refuse symbolic or special files. Recheck content identity and file type immediately
-before each write. If the source changed since assessment, stop the dependent edit,
-rescan, and reconcile against the fresh content; the old proposal is not current.
-
-Apply only the authorized changes. On an incomplete write or a newly introduced
-static gap, restore only this attempt's changes and remove only its newly created
-paths. Before rollback, check that files still match this attempt's last written
-state; never overwrite an intervening edit. If safe restoration or cleanup is not
-possible, retain the remaining temporary copy, report exact paths and partial state,
-and stop. On success clean the temporary copies. Create a permanent backup only on
-explicit request at a chosen location.
+Use the entry's [Shared edit safeguards](../SKILL.md#shared-edit-safeguards):
+build one [change-set](change-set.md), validate it with
+`scripts/apply_changes.py --dry-run`, then apply it. Shared safeguards govern
+write failure and recovery. Successful writing ends the transaction;
+static recheck below is separate and does not trigger automatic rollback.
 
 ## Verify and finish
 
@@ -118,12 +108,14 @@ issue is addressed in writing and whether previously valid branches remain intac
 An existing unrelated gap does not automatically block a bounded improvement or
 trigger a full repair. Keep it visible with the actual recheck scope. An unresolved
 check needed to justify the changed contract prevents calling that edit verified:
-restore the edit safely, or report incomplete recovery. Do not confuse this with
-pending behavioral validation, which is expected and does not require rollback.
+report that writing completed, recheck failed, and edits remain. A repair requires
+a fresh scan, current hashes and a new change-set within the user's authorization;
+do not synthesize an implicit reverse change-set. Pending behavioral validation
+is expected and is separate from a failed static recheck.
 Repeated corrections without new evidence or measurable progress stop the loop.
 
 Use the reflection report for no-change, evidence-needed, proposal, and completed
-outcomes. Do not output all 23 classifications for a routine reflection or call it
+outcomes. Do not output all 24 classifications for a routine reflection or call it
 whole-Skill static compliance. If the user also requests a full static check, apply
 the complete shared check and deliver its separate static report.
 

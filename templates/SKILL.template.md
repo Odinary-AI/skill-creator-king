@@ -57,6 +57,9 @@ prompts and this guidance:
 - Sensitive data: {{none or access, redaction, retention, disclosure, and safe
   failure behavior}}.
 - Confirmation: {{observable confirmation point}}.
+- Enforcement: {{script, test, or host check for each mechanically checkable
+  constraint; judgment and one-off rules stay in prose}}. Remove this bullet when
+  no material constraint is mechanically checkable.
 
 If external content is consumed, state how it remains data rather than authority
 to change the user's request or permissions. Remove this instruction otherwise.

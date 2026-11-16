@@ -90,16 +90,20 @@ resource lists alone are not proof that a reference check completed.
 ## SCK-S03 Name syntax is controlled
 
 - Type: required
-- Applies when: every create or check run.
+- Applies when: every create or check run for length and separators; the character
+  set part applies only when a declared host contract requires ASCII names.
 - Owner: script
-- Pass: `name` is at most 64 characters and uses lowercase letters, digits, and single hyphens.
+- Pass: `name` is at most 64 characters and, for an ASCII name, uses lowercase
+  letters, digits, and single hyphens.
 - Evidence: the declared name.
 - Common gap: uppercase, underscore, whitespace, repeated separator, or excessive length.
 - Minimum change: choose one lowercase hyphenated name and update intentional references.
 
-The deterministic spelling rule covers ASCII names. A non-ASCII name is
-`not_assessed` unless a declared host contract resolves its validity; do not
-promote an ASCII convention into a universal rejection.
+The deterministic spelling rule covers ASCII names. A non-ASCII name is not a
+whole-item unknown: check length and separators normally, and put the host-contract
+question in the report's decision field so the owner can settle it. Do not promote
+an ASCII convention into a universal rejection, and do not let a non-ASCII name turn
+every report into an undecidable verdict.
 
 ## SCK-S04 Directory and name agree
 
@@ -159,7 +163,7 @@ still applies when every candidate is a legitimate literal.
 - Type: advisory
 - Applies when: `references`, `templates`, `assets`, or `scripts` contains a bundled file.
 - Owner: script
-- Pass: each bundled file is reachable through a script-recognized route from `SKILL.md` — an explicit Markdown link, an inline code span whose path-shaped content resolves to that file, or a table-row cell carrying a path-prefixed token that resolves to that file.
+- Pass: each bundled file is reachable through a script-recognized route from `SKILL.md`, directly or through routed Markdown files — an explicit Markdown link, an inline code span whose path-shaped content resolves to that file, or a table-row cell carrying a path-prefixed token that resolves to that file.
 - Evidence: relative orphan path.
 - Common gap: stale, duplicated, forgotten, or deliberately complex-routed resource.
 - Minimum change: let `SCK-L09` confirm the consumer before routing or removing anything.
@@ -236,7 +240,9 @@ files, `.git`, `__pycache__`, `.pytest_cache`, and `.pyc` caches are recorded as
 excluded; excluded directories are not traversed. S07 still owns symbolic links.
 Exclusions do not count as scanned text and do not authorize semantic reading.
 
-`facts.semantic_read_files` contains only scanned, non-hit text paths. Neither
+`facts.semantic_read_files` contains only scanned, non-hit text paths. It is an
+eligibility list, not a requirement to read every file or proof that a file is
+safe. The entry's shared reading gate limits semantic reads to the current task. Neither
 the validator's content extraction nor the LLM may read other target text to
 complete a dependent check. A withheld entry leaves its content-dependent items
 not assessed; a withheld routed Markdown file leaves its nested routes not
@@ -264,6 +270,10 @@ must be scanned again. An absent or failed scan never authorizes a manual read.
 - Evidence: frontmatter description and Scope or equivalent section.
 - Common gap: broad keywords, workflow text in the description, or no non-trigger boundary.
 - Minimum change: describe concrete user situations and one nearby request that should not activate.
+
+For a Codex target the description must also agree with the interface wording in
+`agents/openai.yaml`. A trigger claim repeated in both places has one owner here,
+and a contradiction between them is reported once under this item.
 
 ## SCK-L03 Inputs and missing-input behavior are stated
 
@@ -335,7 +345,9 @@ the existing written instructions or interface documentation. A readable script
 alone does not establish this handoff. Report missing operational direction here
 (inputs under L03), while L09 owns resource reachability; do not double-count.
 Do not demand duplicate interface prose, prescribe scripts for script-free
-Skills, or execute a script to establish its actual behavior.
+Skills, or execute a script to establish its actual behavior. L14 owns whether a
+material deterministic constraint should have a local enforcement point; do not
+duplicate that question here.
 
 When a workflow reuses evidence, inspect what input, content, version and scope
 it binds to; relevant changes must invalidate or recheck affected evidence.
@@ -379,6 +391,11 @@ the absence of a machine interface is not itself a defect.
 - Evidence: Permissions and side effects or equivalent section.
 - Common gap: action is implied, authority is broadened, or confirmation is missing.
 - Minimum change: identify the exact action and the point where user confirmation is required.
+
+When the target declares an implicit-invocation policy, compare that policy with
+the stated authority and side effects. Implicit availability is not permission to
+act: a read-only or confirmation-gated path can be valid, while an implicitly
+reachable consequential action without explicit intent is a gap under this item.
 
 When the target consumes external pages, attachments, or tool responses, check
 that their contents are treated as data, not permission to override the user's
@@ -490,7 +507,10 @@ behavior the implementation actually contains.
 When the declaration is silent on a behavior rather than contradicting it, judge whether
 the omission is material to the stated purpose: an undeclared write, delete, network call,
 or outbound data transfer is a gap; an undeclared internal helper is not. If the
-declaration or the implementation cannot be inspected, use `not_assessed`.
+declaration or the implementation cannot be inspected, use `not_assessed`. L14
+owns the absence of an enforcement point for a material deterministic
+constraint; this item only compares an existing implementation with the
+declaration.
 
 The declaration's own scope governs. An explicitly scoped statement whose scope matches
 the implementation is not a contradiction — for example, "the formal entry is read-only;
@@ -572,3 +592,31 @@ document), a redundant or unnecessarily split bundled file belongs to
 invites future drift. Report one root cause once, under the item that owns
 it. When routed content needed for the comparison was withheld or unreadable,
 use `not_assessed`.
+
+## SCK-L14 Material deterministic constraints have an enforcement point
+
+- Type: advisory
+- Applies when: the Skill declares a material constraint that a local script,
+  test, or host check can decide, and the host can run that check.
+- Owner: LLM
+- Pass: the constraint is enforced by a named script, test, or host check, or the
+  text states why prose is the right level for this constraint.
+- Evidence: the declaration and the enforcing file or command, or the stated
+  rationale for keeping it in prose.
+- Common gap: a path boundary, required output field, allowed tool, version
+  match, or no-write rule is stated only in prose while a local check is
+  available and a violation would be costly or recurring.
+- Minimum change: add the smallest check or link an existing one, with a routed
+  Markdown link from `SKILL.md`; keep judgment, trade-offs, and one-off rules in
+  prose.
+
+Do not infer this item from modal words. A rule that depends on reader judgment,
+a one-off instruction, or a constraint the host cannot check stays prose and is
+not a gap. Add enforcement only when a violation is costly, likely to recur, and
+the host can run the check; otherwise prose is the correct level.
+
+Division of labor: `SCK-L11` compares an existing implementation with the
+declaration and owns contradictions between the two written sides. This item
+owns the absence of an enforcement point for a material deterministic
+constraint. Do not report both for one root cause, and never execute the target
+to establish enforcement.

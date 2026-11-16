@@ -206,6 +206,8 @@ def _frontmatter_parts(text):
     if not text.startswith("---\n"):
         raise FrontmatterError("opening delimiter is absent")
     end = text.find("\n---\n", 4)
+    if end < 0 and text.endswith("\n---"):
+        end = len(text) - 4
     if end < 0:
         raise FrontmatterError("closing delimiter is absent")
     # Retain the YAML line break before the closing Markdown delimiter: it
@@ -545,9 +547,9 @@ def _is_shaped_spaced_path(path_part):
 def _resolve_inline_code_route(root, source, content):
     """Resolve a declared path to a bundled regular file, or None.
 
-    Inline-code and table-cell declarations only add S08 routes. Misses,
-    escapes, absolute paths, and ambiguous forms produce no finding and are
-    left to L09 semantic review; routed Markdown files enqueue further
+    Inline-code and table-cell declarations only add S08 routes. Missing
+    path-shaped tokens may produce a candidate via _declared_route_miss.
+    Escapes, absolute paths and ambiguous forms stay with L09 semantic review; routed Markdown files enqueue further
     traversal under the same S10 rules as Markdown links, while non-
     Markdown declared routes (scripts, data files) never enqueue.
 
@@ -750,7 +752,7 @@ def _collect_references(root, skill_file, skill_text, errors, not_assessed, sema
             else:
                 miss = _declared_route_miss(root, source, content)
                 if miss is not None:
-                    route_misses.add(miss)
+                    route_misses.add((miss, _relative(source, root)))
         for token in _table_cell_path_candidates(text):
             routed = _resolve_inline_code_route(root, source, token)
             if routed is not None:
@@ -760,9 +762,9 @@ def _collect_references(root, skill_file, skill_text, errors, not_assessed, sema
             else:
                 miss = _declared_route_miss(root, source, token)
                 if miss is not None:
-                    route_misses.add(miss)
-    for miss in sorted(route_misses):
-        warnings.append(_issue("SCK-S08", "resource.route.missing", miss))
+                    route_misses.add((miss, _relative(source, root)))
+    for miss, source_path in sorted(route_misses):
+        warnings.append(_issue("SCK-S08", "resource.route.missing", miss, source_path))
     return sorted(reachable), sorted(declared_routes)
 
 
@@ -779,7 +781,7 @@ def _declared_route_miss(root, source, content):
     path prefix, bears a known file suffix, resolves to no bundled file
     under the declaring file's directory or the Skill root, and is not
     an external URL, wildcard template, or placeholder -- counts as a
-    miss. Bare filenames and bracket templates stay silent for L09.
+    miss. Bare filenames, escapes and bracket templates stay silent for L09.
     """
     if (
         any(character.isspace() for character in content)
@@ -802,9 +804,15 @@ def _declared_route_miss(root, source, content):
     for base in (source.parent, root):
         candidate = base / target
         try:
+            resolved = candidate.resolve()
+            if not _inside(resolved, root):
+                # An escaping source-relative token is not a missing bundled
+                # file. L09 owns its meaning and containment disposition.
+                if base == source.parent:
+                    return None
+                continue
             if (
-                _inside(candidate.resolve(), root)
-                and candidate.resolve().is_file()
+                resolved.is_file()
                 and not candidate.is_symlink()
             ):
                 return None
