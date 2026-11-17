@@ -1,8 +1,9 @@
 # Unified static report v2
 
-Use one normalized result for both Markdown and JSON. This full agent report is
+Use one normalized result for Markdown, plain text, and JSON. This full agent report is
 different from `validate_skill.py`'s deterministic output. Never turn script
-`passed` into semantic completion. Render Markdown by default; honor JSON and
+`passed` into semantic completion. Use plain text when the host lacks Markdown
+rendering or support is unknown. Honor explicit format and
 concise/full requests. Concise omits only explanations for passed items, never
 findings, uncertainty, limitations or the claim boundary. JSON always retains
 the complete data. No numeric quality score is produced.
@@ -111,17 +112,18 @@ only schema validation runs. Warnings are not automatically upgraded to gaps.
 all selected-profile IDs exactly once, and computes `verdict`, `coverage` and
 `claim_boundary`. It never reads or executes the target and cannot establish the
 truth of supplied semantic judgments. The evidence remains the agent's duty.
-The Markdown keeps judgement fields in the body and places the audit trail
-(`read_scope`, pass block, pass reasons, script observation dispositions, change
-evidence) after the `—— 以下为审计明细，供维护者追溯 ——` separator; observations
-of the same check are merged into one counted line while JSON keeps every original
-object. Follow the report contract for which fields are always printed and which
-are omitted when empty.
+The Markdown uses the [report layout](report.md#静态合规报告) for judgement fields
+and places the audit trail under `2. 审核明细`.
+Observations of the same check are merged into one counted line while JSON keeps
+every original object. Follow the report contract for which fields are always
+printed and which are omitted when empty.
 
 ```bash
 python3 "<loaded-sck-directory>/scripts/render_report.py" "<assessed-report.json>" --format json
 python3 "<loaded-sck-directory>/scripts/render_report.py" "<assessed-report.json>" --format markdown --verbosity concise --facts "<validator.json>"
 ```
+
+For plain text, use `--format text` with the same options.
 
 The agent can build and render this same shape in memory. Do not create a report
 file unless the user requested one. If a file is requested, validate it with the

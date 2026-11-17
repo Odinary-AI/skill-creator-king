@@ -4,7 +4,7 @@ SCK 是显式选择型 Skill，可在 Codex、Claude Code、WorkBuddy 与 DSH �
 Skill 的书面缺口、根据实际使用过程复盘改进已有 Skill。它帮助把需求和真实经验
 变成有边界的可复用指令，用同一份问题清单支持静态检查。
 
-当前版本为 **5.12.3**。检查能力吸收原 Agent Skill Checker，
+当前版本为 **5.12.4**。检查能力吸收原 Agent Skill Checker，
 提供 Codex 接口检查与统一 JSON 报告，保留创建、复盘及敏感信息预扫描。
 
 ## 快速开始
@@ -186,7 +186,7 @@ python3 "<SCK安装目录>/scripts/check_skill.py" "<目标Skill目录>" --profi
 实际功能，也不提供安全认证、质量分数或 marketplace 就绪结论。创建和完整检查
 报告必须说明：
 
-`实际运行：未评估（SCK 只做静态检查）`
+`本次仅检查书面内容，未实际运行 Skill`
 
 复盘报告分别说明历史证据、当前修改与相关复查，并明确未执行目标 Skill；
 修改效果待后续使用验证。旧记录不能证明新版本已经有效。

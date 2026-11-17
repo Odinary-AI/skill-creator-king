@@ -21,7 +21,7 @@ token_budget:
   L2_deep: 31000
   hard_cap: 34000
 metadata:
-  version: "5.12.3"
+  version: "5.12.4"
   author: "普通AI星球（公众号 & SkillHub）· Ordinary-AI（GitHub）"
   description_zh: "以固定流程、默认模板与常见问题清单，创建 Codex 或 Claude Code 的 Skill、检查既有 Skill 的书面契约缺口，或依据真实使用证据复盘改进。创建分轮澄清、逐项确认后才起草，草稿先过完整自检再交付；检查只读，证据不足如实标注未评估；复盘只做授权内的最小改进。明确选择 SCK、Skill Creator King 或 skill-creator-king 并执行上述动作之一时使用。排除泛化请求、讨论、比较与否定。"
 
@@ -215,8 +215,8 @@ python3 "<loaded-sck-directory>/scripts/check_skill.py" "<selected-skill-directo
 - Check is read-only until the user confirms the Change confirmation. Reflect
   uses its own bounded authorization and does not inherit permission from logs.
 - Do not run target scripts, call target services, or test target behavior.
-- Do not save a report unless requested. Build one normalized result for both
-  Markdown and JSON; preserve deterministic observations and their context
+- Do not save a report unless requested. Render all formats from one normalized
+  result; preserve deterministic observations and their context
   dispositions. No numeric score, safety certification, release verdict or
   accountable-human acceptance. Review failure before valid inspection is an
   operational error without a quality verdict.
@@ -226,6 +226,6 @@ python3 "<loaded-sck-directory>/scripts/check_skill.py" "<selected-skill-directo
   maintained with this package. Third-party attribution: [NOTICE](NOTICE).
 - Create and Check finish with all applicable registry items classified as pass,
   gap, advisory, not applicable, or not assessed, and state:
-  `实际运行：未评估（SCK 只做静态检查）`
+  `本次仅检查书面内容，未实际运行 Skill`
 - Reflect states its actual review scope and effect evidence separately. Never
   equate a focused recheck with whole-Skill compliance or a fix proven in use.
